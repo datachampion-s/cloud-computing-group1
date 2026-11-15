@@ -11,12 +11,12 @@ Maulana compiles the report and coordinates the video. Aufaa and Taufik provide 
 
 | Section | Owner | Materials |
 | --- | --- | --- |
-| Background, objectives, free-access model and users | Maulana | [Architecture](ARCHITECTURE.md), [workflows](WORKFLOWS.md), public application pages |
-| System architecture, frontend/backend and integrations | Maulana | [Architecture](ARCHITECTURE.md), [workflows](WORKFLOWS.md); ask an authorized project operator to explain any implementation not present here |
+| Background, objectives, free-access model and users | Maulana | [Architecture](architecture.md), [workflows](workflows.md), public application pages |
+| System architecture, frontend/backend and integrations | Maulana | [Architecture](architecture.md), [workflows](workflows.md); inspect the sanitized application and worker source in this repository |
 | Cloud setup and firewall | Aufaa | [AWS setup](aws/README.md), redacted VPC, security-group and IAM configuration evidence |
 | Backup and restore | Taufik | [Operations](OPERATIONS.md), actual backup settings and isolated restore evidence |
 | CPU/RAM monitoring and logging | Taufik | [AWS setup](aws/README.md), redacted CloudWatch metrics, log group and retention evidence |
-| Storage, lifecycle, testing and results | Taufik and Aufaa, compiled by Maulana | [Architecture](ARCHITECTURE.md), [workflows](WORKFLOWS.md), redacted session/export and operations evidence |
+| Storage, lifecycle, testing and results | Taufik and Aufaa, compiled by Maulana | [Architecture](architecture.md), [workflows](workflows.md), redacted session/export and operations evidence |
 | Deployment, findings, limitations and conclusion | Maulana with evidence from cloud engineers | Deployment documentation and observed test outcomes |
 
 The required operational jobs are **firewall, database backup, monitoring and logging**. Describe what each does in this project, setup, test results and dated evidence. Mark backup and restore as unverified until actually tested. Do not publish secrets, personal data, signed URLs, real IP addresses or internal resource identifiers.

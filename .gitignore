@@ -1,0 +1,9 @@
+node_modules/
+.next/
+.vercel/
+.env*
+*.pem
+*.key
+*.log
+coverage/
+__pycache__/

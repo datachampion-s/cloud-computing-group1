@@ -1,0 +1,158 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: DCS HPC isolated export lifecycle
+Parameters:
+  ArtifactBucket:
+    Type: String
+  CodeKey:
+    Type: String
+  CodeBucket:
+    Type: String
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  WorkerAmi:
+    Type: AWS::EC2::Image::Id
+  AdminAlertTopicArn:
+    Type: String
+    Description: SNS topic for lifecycle failure alarms
+Resources:
+  WorkerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Outbound access for the isolated DCS export worker
+      VpcId: !Ref VpcId
+  WorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: [ec2.amazonaws.com] }
+            Action: ['sts:AssumeRole']
+      Policies:
+        - PolicyName: ExportArtifacts
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:AbortMultipartUpload']
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}/*'
+  WorkerProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref WorkerRole]
+  ControllerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: [lambda.amazonaws.com] }
+            Action: ['sts:AssumeRole']
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: Lifecycle
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ['ec2:DescribeInstances', 'ec2:DescribeVolumes']
+                Resource: '*'
+              - Effect: Allow
+                Action: ['ec2:RunInstances']
+                Resource: '*'
+                Condition:
+                  StringEqualsIfExists: { 'ec2:InstanceType': 't3.micro' }
+              - Effect: Allow
+                Action: ['ec2:CreateTags']
+                Resource: '*'
+              - Effect: Allow
+                Action: ['ec2:StopInstances', 'ec2:TerminateInstances', 'ec2:ModifyInstanceAttribute', 'ec2:AttachVolume', 'ec2:DetachVolume', 'ec2:DeleteVolume']
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    'ec2:ResourceTag/Project': ['dcs-hpc', 'dcs-hpc-export']
+              - Effect: Allow
+                Action: ['iam:PassRole']
+                Resource: !GetAtt WorkerRole.Arn
+                Condition:
+                  StringEquals: { 'iam:PassedToService': 'ec2.amazonaws.com' }
+              - Effect: Allow
+                Action: ['s3:GetObject', 's3:DeleteObject']
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}/*'
+              - Effect: Allow
+                Action: ['s3:ListBucket']
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}'
+              - Effect: Allow
+                Action: ['dynamodb:PutItem', 'dynamodb:DeleteItem']
+                Resource: !GetAtt LifecycleLocks.Arn
+              - Effect: Allow
+                Action: ['sns:Publish']
+                Resource: !Ref AdminAlertTopicArn
+  LifecycleLocks:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: instance_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: instance_id
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expires
+        Enabled: true
+  Controller:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.13
+      Handler: isolated_controller.handler
+      Role: !GetAtt ControllerRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      Code: { S3Bucket: !Ref CodeBucket, S3Key: !Ref CodeKey }
+      Environment:
+        Variables:
+          ARTIFACT_BUCKET: !Ref ArtifactBucket
+          WORKER_AMI: !Ref WorkerAmi
+          WORKER_PROFILE: !Ref WorkerProfile
+          WORKER_SECURITY_GROUP: !Ref WorkerSecurityGroup
+          LOCK_TABLE: !Ref LifecycleLocks
+          ADMIN_ALERT_TOPIC_ARN: !Ref AdminAlertTopicArn
+  ReconcileRule:
+    Type: AWS::Events::Rule
+    Properties:
+      ScheduleExpression: rate(1 minute)
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt Controller.Arn
+          Id: LifecycleController
+  RulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref Controller
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ReconcileRule.Arn
+  ControllerErrors:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Export lifecycle reconciliation failed; source disks must be retained for recovery.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref Controller
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+Outputs:
+  ControllerName:
+    Value: !Ref Controller
+  WorkerRoleArn:
+    Value: !GetAtt WorkerRole.Arn

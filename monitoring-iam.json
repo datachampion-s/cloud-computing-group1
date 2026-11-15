@@ -1,0 +1,60 @@
+{
+  "applicationRolePolicy": {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "ReadComputeMonitoring",
+        "Effect": "Allow",
+        "Action": [
+          "ec2:DescribeInstances"
+        ],
+        "Resource": "*"
+      },
+      {
+        "Sid": "ReadAuthenticatedAccessLogs",
+        "Effect": "Allow",
+        "Action": [
+          "logs:FilterLogEvents"
+        ],
+        "Resource": "arn:aws:logs:*:*:log-group:/dcs-hpc/jupyter-access"
+      },
+      {
+        "Sid": "WriteAuthenticatedPortalAccess",
+        "Effect": "Allow",
+        "Action": [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ],
+        "Resource": "arn:aws:logs:*:*:log-group:/dcs-hpc/jupyter-access:log-stream:portal-access"
+      }
+    ]
+  },
+  "instanceProfilePolicy": {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "PublishMonitoringMetrics",
+        "Effect": "Allow",
+        "Action": [
+          "cloudwatch:PutMetricData"
+        ],
+        "Resource": "*",
+        "Condition": {
+          "StringEquals": {
+            "cloudwatch:namespace": "CWAgent"
+          }
+        }
+      },
+      {
+        "Sid": "CreateRetainedMonitoringLogs",
+        "Effect": "Allow",
+        "Action": [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogStreams"
+        ],
+        "Resource": "arn:aws:logs:*:*:log-group:/dcs-hpc/jupyter-access:*"
+      }
+    ]
+  }
+}
